@@ -57,14 +57,14 @@ tasks.named<Test>("test") {
 tasks.register<Test>("integrationTest") {
     description = "Runs integration tests"
     group = "verification"
-    
+
     testClassesDirs = sourceSets["test"].output.classesDirs
     classpath = sourceSets["test"].runtimeClasspath
-    
+ 
     useJUnitPlatform {
         includeTags("integration")
     }
-    
+
     shouldRunAfter(tasks.test)
 }
 
@@ -72,23 +72,23 @@ publishing {
     publications {
         create<MavenPublication>("mavenJava") {
             from(components["java"])
-            
+
             groupId = "org.zouarioss"
             artifactId = "skinned-rat-orm"
             version = "1.0.0"
-            
-            pom {
+ 
+           pom {
                 name.set("Skinned Rat ORM")
                 description.set("A lightweight ORM framework for Java with annotation-based entity mapping")
                 url.set("https://github.com/zouari-oss/skinned-rat-orm")
-                
+
                 licenses {
                     license {
                         name.set("GPL-3.0 License")
                         url.set("https://opensource.org/license/GPL-3.0")
                     }
                 }
-                
+
                 developers {
                     developer {
                         id.set("zouariomar")
@@ -96,7 +96,7 @@ publishing {
                         email.set("zouariomar20@gmail.com")
                     }
                 }
-                
+ 
                 scm {
                     connection.set("scm:git:git://github.com/zouari-oss/skinned-rat-orm.git")
                     developerConnection.set("scm:git:ssh://github.com/zouari-oss/skinned-rat-orm.git")
@@ -105,33 +105,21 @@ publishing {
             }
         }
     }
-    
+
     repositories {
         // Local Maven repository (for testing)
         maven {
             name = "local"
             url = uri("file://${buildDir}/repo")
         }
-        
+
         // GitHub Packages
         maven {
             name = "GitHubPackages"
             url = uri("https://maven.pkg.github.com/zouari-oss/skinned-rat-orm")
             credentials {
-                username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
-                password = project.findProperty("gpr.token") as String? ?: System.getenv("GITHUB_TOKEN")
-            }
-        }
-        
-        // Maven Central (via Sonatype OSSRH)
-        maven {
-            name = "OSSRH"
-            val releasesRepoUrl = uri("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
-            val snapshotsRepoUrl = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/")
-            url = if (version.toString().endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
-            credentials {
-                username = project.findProperty("ossrh.username") as String? ?: System.getenv("OSSRH_USERNAME")
-                password = project.findProperty("ossrh.password") as String? ?: System.getenv("OSSRH_PASSWORD")
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
             }
         }
     }
