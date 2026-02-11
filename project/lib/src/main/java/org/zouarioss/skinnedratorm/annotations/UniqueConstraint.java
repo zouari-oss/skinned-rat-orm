@@ -1,0 +1,16 @@
+package org.zouarioss.skinnedratorm.annotations;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Repeatable;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+@Repeatable(UniqueConstraints.class)
+public @interface UniqueConstraint {
+  String name();
+
+  String[] columnNames();
+}
