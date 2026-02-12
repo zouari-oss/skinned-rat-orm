@@ -59,6 +59,24 @@ public class SchemaGenerator {
       sql.append(",");
     }
 
+    // Add foreign key columns for OneToOne relationships (only owning side)
+    for (final FieldMetadata relationshipField : metadata.getRelationshipFields()) {
+      if (relationshipField.isOwningSide() && relationshipField.getJoinColumnName() != null) {
+        sql.append(relationshipField.getJoinColumnName())
+            .append(" CHAR(36)"); // UUID foreign key
+        
+        // Assuming nullable is same as the @JoinColumn nullable attribute
+        // For now, we'll make it nullable
+        sql.append(" NULL");
+        
+        if (relationshipField.isUnique()) {
+          sql.append(" UNIQUE");
+        }
+        
+        sql.append(",");
+      }
+    }
+
     if (metadata.getIdField() != null) {
       sql.append("PRIMARY KEY (")
           .append(metadata.getIdField().getColumnName())

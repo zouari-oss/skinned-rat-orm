@@ -8,6 +8,9 @@ import java.util.List;
 import org.zouarioss.skinnedratorm.annotations.Column;
 import org.zouarioss.skinnedratorm.annotations.Entity;
 import org.zouarioss.skinnedratorm.annotations.Id;
+import org.zouarioss.skinnedratorm.annotations.JoinColumn;
+import org.zouarioss.skinnedratorm.annotations.ManyToOne;
+import org.zouarioss.skinnedratorm.annotations.OneToOne;
 import org.zouarioss.skinnedratorm.annotations.PrePersist;
 import org.zouarioss.skinnedratorm.annotations.Table;
 
@@ -15,6 +18,7 @@ public class EntityMetadata {
 
   private final String tableName;
   private final List<FieldMetadata> fields = new ArrayList<>();
+  private final List<FieldMetadata> relationshipFields = new ArrayList<>();
   private FieldMetadata idField;
   private final List<Method> prePersistMethods = new ArrayList<>();
 
@@ -37,6 +41,14 @@ public class EntityMetadata {
     extractRecursively(clazz.getSuperclass());
 
     for (final Field field : clazz.getDeclaredFields()) {
+      // Check if it's a relationship field
+      if (field.isAnnotationPresent(OneToOne.class) || field.isAnnotationPresent(ManyToOne.class) || field.isAnnotationPresent(JoinColumn.class)) {
+        final FieldMetadata metadata = new FieldMetadata(field);
+        relationshipFields.add(metadata);
+        // Don't add to regular fields - handle separately
+        continue;
+      }
+      
       if (field.isAnnotationPresent(Column.class) || field.isAnnotationPresent(Id.class)) {
 
         final FieldMetadata metadata = new FieldMetadata(field);
@@ -71,5 +83,9 @@ public class EntityMetadata {
 
   public List<Method> getPrePersistMethods() {
     return prePersistMethods;
+  }
+
+  public List<FieldMetadata> getRelationshipFields() {
+    return relationshipFields;
   }
 }

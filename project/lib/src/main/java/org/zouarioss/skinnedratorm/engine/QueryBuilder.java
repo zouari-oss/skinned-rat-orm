@@ -173,6 +173,30 @@ public class QueryBuilder<T> {
       fieldMeta.getField().set(instance, value);
     }
 
+    // Load OneToOne relationships (only owning side has join column)
+    for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
+      if (relationshipMeta.isOwningSide() && relationshipMeta.getJoinColumnName() != null) {
+        // Get the foreign key value from the result set
+        Object foreignKeyValue = rs.getObject(relationshipMeta.getJoinColumnName());
+        
+        if (foreignKeyValue != null) {
+          // Convert to UUID if needed
+          if (foreignKeyValue instanceof String) {
+            foreignKeyValue = java.util.UUID.fromString((String) foreignKeyValue);
+          }
+          
+          // Load the related entity using EntityManager
+          final Class<?> relatedClass = relationshipMeta.getField().getType();
+          final org.zouarioss.skinnedratorm.core.EntityManager em = 
+              new org.zouarioss.skinnedratorm.core.EntityManager(connection);
+          final Object relatedEntity = em.findById(relatedClass, foreignKeyValue);
+          
+          // Set the related entity
+          relationshipMeta.getField().set(instance, relatedEntity);
+        }
+      }
+    }
+
     return instance;
   }
 

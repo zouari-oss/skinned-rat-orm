@@ -1,4 +1,3 @@
-
 package org.zouarioss.skinnedratorm.metadata;
 
 import java.lang.reflect.Field;
@@ -10,6 +9,9 @@ import org.zouarioss.skinnedratorm.annotations.Enumerated;
 import org.zouarioss.skinnedratorm.annotations.GeneratedValue;
 import org.zouarioss.skinnedratorm.annotations.GenerationType;
 import org.zouarioss.skinnedratorm.annotations.Id;
+import org.zouarioss.skinnedratorm.annotations.JoinColumn;
+import org.zouarioss.skinnedratorm.annotations.ManyToOne;
+import org.zouarioss.skinnedratorm.annotations.OneToOne;
 import org.zouarioss.skinnedratorm.annotations.UpdateTimestamp;
 
 public class FieldMetadata {
@@ -26,12 +28,32 @@ public class FieldMetadata {
   private final boolean unique;
   private final int length;
   private final boolean nullable;
+  private final boolean isOneToOne;
+  private final boolean isManyToOne;
+  private final String joinColumnName;
+  private final String mappedBy; // For inverse side of relationship
 
   public FieldMetadata(final Field field) {
     this.field = field;
     this.field.setAccessible(true);
 
     this.id = field.isAnnotationPresent(Id.class);
+
+    // Check if this is a OneToOne or ManyToOne relationship
+    this.isOneToOne = field.isAnnotationPresent(OneToOne.class);
+    this.isManyToOne = field.isAnnotationPresent(ManyToOne.class);
+    
+    // Get mappedBy attribute if it's an inverse side
+    final OneToOne oneToOne = field.getAnnotation(OneToOne.class);
+    this.mappedBy = (oneToOne != null && !oneToOne.mappedBy().isBlank())
+        ? oneToOne.mappedBy()
+        : null;
+    
+    // Get join column name if specified
+    final JoinColumn joinColumn = field.getAnnotation(JoinColumn.class);
+    this.joinColumnName = (joinColumn != null && !joinColumn.name().isBlank())
+        ? joinColumn.name()
+        : null;
 
     final Column column = field.getAnnotation(Column.class);
     this.columnName = (column != null && !column.name().isBlank())
@@ -102,5 +124,25 @@ public class FieldMetadata {
 
   public boolean isNullable() {
     return nullable;
+  }
+
+  public boolean isOneToOne() {
+    return isOneToOne;
+  }
+
+  public boolean isManyToOne() {
+    return isManyToOne;
+  }
+
+  public String getJoinColumnName() {
+    return joinColumnName;
+  }
+
+  public String getMappedBy() {
+    return mappedBy;
+  }
+
+  public boolean isOwningSide() {
+    return (isOneToOne || isManyToOne) && mappedBy == null;
   }
 }

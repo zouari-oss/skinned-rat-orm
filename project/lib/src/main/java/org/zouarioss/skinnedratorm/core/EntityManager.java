@@ -34,6 +34,25 @@ public class EntityManager {
     // Handle timestamps (CreationTimestamp / UpdateTimestamp)
     handleTimestamps(entity, metadata, false);
 
+    // Handle cascading persists for OneToOne relationships (only on owning side)
+    for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
+      
+      if (relationshipMeta.isOwningSide()) { // Only cascade on owning side
+        final Object relatedEntity = relationshipMeta.getField().get(entity);
+        
+        if (relatedEntity != null) {
+          // Check if the related entity has an ID (already persisted)
+          final EntityMetadata relatedMetadata = MetadataRegistry.getMetadata(relatedEntity.getClass());
+          final Object relatedId = relatedMetadata.getIdField().getField().get(relatedEntity);
+          
+          // If no ID, cascade persist
+          if (relatedId == null) {
+            persist(relatedEntity); // Recursive cascade
+          }
+        }
+      }
+    }
+
     // Build SQL
     final StringBuilder columns = new StringBuilder();
     final StringBuilder values = new StringBuilder();
@@ -43,11 +62,20 @@ public class EntityManager {
       values.append("?,");
     }
 
+    // Add foreign key columns for OneToOne relationships (only owning side)
+    for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
+      if (relationshipMeta.isOwningSide() && relationshipMeta.getJoinColumnName() != null) {
+        columns.append(relationshipMeta.getJoinColumnName()).append(",");
+        values.append("?,");
+      }
+    }
+
     columns.setLength(columns.length() - 1);
     values.setLength(values.length() - 1);
 
     final String sql = "INSERT INTO " + metadata.getTableName() +
         " (" + columns + ") VALUES (" + values + ")";
+
 
     final PreparedStatement stmt = connection.prepareStatement(sql);
 
@@ -79,6 +107,28 @@ public class EntityManager {
 
       stmt.setObject(index++, value);
 
+    }
+
+    // Set foreign key values for OneToOne relationships (only owning side)
+    for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
+      if (relationshipMeta.isOwningSide() && relationshipMeta.getJoinColumnName() != null) {
+        final Object relatedEntity = relationshipMeta.getField().get(entity);
+        
+        if (relatedEntity != null) {
+          // Get the ID of the related entity
+          final EntityMetadata relatedMetadata = MetadataRegistry.getMetadata(relatedEntity.getClass());
+          Object relatedId = relatedMetadata.getIdField().getField().get(relatedEntity);
+          
+          // Convert UUID to String for storage
+          if (relatedId instanceof java.util.UUID) {
+            relatedId = relatedId.toString();
+          }
+          
+          stmt.setObject(index++, relatedId);
+        } else {
+          stmt.setObject(index++, null);
+        }
+      }
     }
 
     // Execute
@@ -247,6 +297,30 @@ public class EntityManager {
       }
 
       fieldMeta.getField().set(instance, value);
+    }
+
+    // Load OneToOne relationships (only owning side has join column)
+    for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
+      
+      if (relationshipMeta.isOwningSide() && relationshipMeta.getJoinColumnName() != null) {
+        // Get the foreign key value from the result set
+        Object foreignKeyValue = rs.getObject(relationshipMeta.getJoinColumnName());
+        
+        if (foreignKeyValue != null) {
+          // Convert to UUID if needed
+          if (foreignKeyValue instanceof String) {
+            foreignKeyValue = java.util.UUID.fromString((String) foreignKeyValue);
+          }
+          
+          // Load the related entity
+          final Class<?> relatedClass = relationshipMeta.getField().getType();
+          final Object relatedEntity = findById(relatedClass, foreignKeyValue);
+          
+          // Set the related entity
+          relationshipMeta.getField().set(instance, relatedEntity);
+        } else {
+        }
+      }
     }
 
     return instance;
