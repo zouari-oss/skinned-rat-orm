@@ -13,7 +13,7 @@ plugins {
 }
 
 group = "org.zouarioss"
-version = "1.0.0"
+version = "1.0.1"
 
 repositories {
     // Use Maven Central for resolving dependencies.
@@ -28,12 +28,6 @@ dependencies {
 
     // MariaDB JDBC driver for testing
     testImplementation("org.mariadb.jdbc:mariadb-java-client:3.3.2")
-
-    // This dependency is exported to consumers, that is to say found on their compile classpath.
-    api(libs.commons.math3)
-
-    // This dependency is used internally, and not exposed to consumers on their own compile classpath.
-    implementation(libs.guava)
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
@@ -74,8 +68,8 @@ publishing {
             from(components["java"])
 
             groupId = "org.zouarioss"
-            artifactId = "skinned-rat-orm"
-            version = "1.0.0"
+            artifactId = "skinnedratorm"
+            version = "1.0.1"
  
            pom {
                 name.set("Skinned Rat ORM")
