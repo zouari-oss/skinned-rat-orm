@@ -1,4 +1,4 @@
-package org.zouarioss.skinnedratorm.engine;
+package org.zouarioss.skinnedratorm.flag;
 
 public enum SQLDialect {
   MYSQL,

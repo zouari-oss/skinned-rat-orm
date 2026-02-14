@@ -7,12 +7,13 @@ import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.zouarioss.skinnedratorm.annotations.EnumType;
-import org.zouarioss.skinnedratorm.annotations.GenerationType;
+import org.zouarioss.skinnedratorm.flag.EnumType;
+import org.zouarioss.skinnedratorm.flag.GenerationType;
 import org.zouarioss.skinnedratorm.engine.QueryBuilder;
 import org.zouarioss.skinnedratorm.metadata.EntityMetadata;
 import org.zouarioss.skinnedratorm.metadata.FieldMetadata;
 import org.zouarioss.skinnedratorm.metadata.MetadataRegistry;
+import org.zouarioss.skinnedratorm.util.ResultSetMapper;
 
 public class EntityManager {
 
@@ -26,6 +27,9 @@ public class EntityManager {
 
     final EntityMetadata metadata = MetadataRegistry.getMetadata(entity.getClass());
 
+    // Validate entity
+    org.zouarioss.skinnedratorm.util.EntityValidator.validate(entity);
+
     // Invoke lifecycle callbacks (@PrePersist)
     for (final Method method : metadata.getPrePersistMethods()) {
       method.invoke(entity);
@@ -36,15 +40,15 @@ public class EntityManager {
 
     // Handle cascading persists for OneToOne relationships (only on owning side)
     for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
-      
+
       if (relationshipMeta.isOwningSide()) { // Only cascade on owning side
         final Object relatedEntity = relationshipMeta.getField().get(entity);
-        
+
         if (relatedEntity != null) {
           // Check if the related entity has an ID (already persisted)
           final EntityMetadata relatedMetadata = MetadataRegistry.getMetadata(relatedEntity.getClass());
           final Object relatedId = relatedMetadata.getIdField().getField().get(relatedEntity);
-          
+
           // If no ID, cascade persist
           if (relatedId == null) {
             persist(relatedEntity); // Recursive cascade
@@ -76,63 +80,67 @@ public class EntityManager {
     final String sql = "INSERT INTO " + metadata.getTableName() +
         " (" + columns + ") VALUES (" + values + ")";
 
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      // Set values
+      int index = 1;
+      for (final FieldMetadata fieldMeta : metadata.getFields()) {
+        Object value = fieldMeta.getField().get(entity);
 
-    final PreparedStatement stmt = connection.prepareStatement(sql);
+        // Handle generated value
+        if (fieldMeta.isGeneratedValue() && value == null) {
+          if (fieldMeta.getGenerationType() == GenerationType.UUID) {
+            // Check if field type is UUID or String
+            if (fieldMeta.getField().getType() == java.util.UUID.class) {
+              value = java.util.UUID.randomUUID();
+            } else {
+              value = java.util.UUID.randomUUID().toString();
+            }
+            fieldMeta.getField().set(entity, value); // set it back into the entity
+          }
+        }
 
-    // Set values
-    int index = 1;
-    for (final FieldMetadata fieldMeta : metadata.getFields()) {
-      Object value = fieldMeta.getField().get(entity);
+        // Handle enums
+        value = convertIfEnum(fieldMeta, value);
 
-      // Handle generated value
-      if (fieldMeta.isGeneratedValue() && value == null) {
-        if (fieldMeta.getGenerationType() == GenerationType.UUID) {
-          // Check if field type is UUID or String
-          if (fieldMeta.getField().getType() == java.util.UUID.class) {
-            value = java.util.UUID.randomUUID();
+        // Convert UUID to String for storage
+        if (value instanceof java.util.UUID) {
+          value = value.toString();
+        }
+
+        stmt.setObject(index++, value);
+
+      }
+
+      // Set foreign key values for OneToOne relationships (only owning side)
+      for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
+        if (relationshipMeta.isOwningSide() && relationshipMeta.getJoinColumnName() != null) {
+          final Object relatedEntity = relationshipMeta.getField().get(entity);
+
+          if (relatedEntity != null) {
+            // Get the ID of the related entity
+            final EntityMetadata relatedMetadata = MetadataRegistry.getMetadata(relatedEntity.getClass());
+            Object relatedId = relatedMetadata.getIdField().getField().get(relatedEntity);
+
+            // Convert UUID to String for storage
+            if (relatedId instanceof java.util.UUID) {
+              relatedId = relatedId.toString();
+            }
+
+            stmt.setObject(index++, relatedId);
           } else {
-            value = java.util.UUID.randomUUID().toString();
+            stmt.setObject(index++, null);
           }
-          fieldMeta.getField().set(entity, value); // set it back into the entity
         }
       }
 
-      // Handle enums
-      value = convertIfEnum(fieldMeta, value);
-
-      // Convert UUID to String for storage
-      if (value instanceof java.util.UUID) {
-        value = value.toString();
-      }
-
-      stmt.setObject(index++, value);
-
+      // Execute
+      stmt.executeUpdate();
     }
 
-    // Set foreign key values for OneToOne relationships (only owning side)
-    for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
-      if (relationshipMeta.isOwningSide() && relationshipMeta.getJoinColumnName() != null) {
-        final Object relatedEntity = relationshipMeta.getField().get(entity);
-        
-        if (relatedEntity != null) {
-          // Get the ID of the related entity
-          final EntityMetadata relatedMetadata = MetadataRegistry.getMetadata(relatedEntity.getClass());
-          Object relatedId = relatedMetadata.getIdField().getField().get(relatedEntity);
-          
-          // Convert UUID to String for storage
-          if (relatedId instanceof java.util.UUID) {
-            relatedId = relatedId.toString();
-          }
-          
-          stmt.setObject(index++, relatedId);
-        } else {
-          stmt.setObject(index++, null);
-        }
-      }
+    // Invoke post-persist callbacks
+    for (final Method method : metadata.getPostPersistMethods()) {
+      method.invoke(entity);
     }
-
-    // Execute
-    stmt.executeUpdate();
   }
 
   public <T> T findById(final Class<T> clazz, final Object id) throws Exception {
@@ -142,23 +150,31 @@ public class EntityManager {
     final String sql = "SELECT * FROM " + metadata.getTableName() +
         " WHERE " + metadata.getIdField().getColumnName() + " = ?";
 
-    final PreparedStatement stmt = connection.prepareStatement(sql);
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      // Convert UUID to String for database query
+      final Object queryId = (id instanceof java.util.UUID) ? id.toString() : id;
+      stmt.setObject(1, queryId);
 
-    // Convert UUID to String for database query
-    final Object queryId = (id instanceof java.util.UUID) ? id.toString() : id;
-    stmt.setObject(1, queryId);
+      try (final ResultSet rs = stmt.executeQuery()) {
+        if (!rs.next())
+          return null;
 
-    final ResultSet rs = stmt.executeQuery();
-
-    if (!rs.next())
-      return null;
-
-    return mapResultToEntity(clazz, metadata, rs);
+        return ResultSetMapper.mapResultToEntity(clazz, metadata, rs, connection);
+      }
+    }
   }
 
   public <T> void update(final T entity) throws Exception {
 
     final EntityMetadata metadata = MetadataRegistry.getMetadata(entity.getClass());
+
+    // Validate entity
+    org.zouarioss.skinnedratorm.util.EntityValidator.validate(entity);
+
+    // Invoke pre-update callbacks
+    for (final Method method : metadata.getPreUpdateMethods()) {
+      method.invoke(entity);
+    }
 
     handleTimestamps(entity, metadata, true);
 
@@ -176,36 +192,41 @@ public class EntityManager {
         " SET " + setClause +
         " WHERE " + metadata.getIdField().getColumnName() + "=?";
 
-    final PreparedStatement stmt = connection.prepareStatement(sql);
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      int index = 1;
 
-    int index = 1;
+      for (final FieldMetadata fieldMeta : metadata.getFields()) {
 
-    for (final FieldMetadata fieldMeta : metadata.getFields()) {
+        if (!fieldMeta.isId() && fieldMeta.isUpdatable()) {
 
-      if (!fieldMeta.isId() && fieldMeta.isUpdatable()) {
+          Object value = fieldMeta.getField().get(entity);
+          value = convertIfEnum(fieldMeta, value);
 
-        Object value = fieldMeta.getField().get(entity);
-        value = convertIfEnum(fieldMeta, value);
+          // Convert UUID to String for storage
+          if (value instanceof java.util.UUID) {
+            value = value.toString();
+          }
 
-        // Convert UUID to String for storage
-        if (value instanceof java.util.UUID) {
-          value = value.toString();
+          stmt.setObject(index++, value);
         }
-
-        stmt.setObject(index++, value);
       }
+
+      Object idValue = metadata.getIdField().getField().get(entity);
+
+      // Convert UUID to String for storage
+      if (idValue instanceof java.util.UUID) {
+        idValue = idValue.toString();
+      }
+
+      stmt.setObject(index, idValue);
+
+      stmt.executeUpdate();
     }
 
-    Object idValue = metadata.getIdField().getField().get(entity);
-
-    // Convert UUID to String for storage
-    if (idValue instanceof java.util.UUID) {
-      idValue = idValue.toString();
+    // Invoke post-update callbacks
+    for (final Method method : metadata.getPostUpdateMethods()) {
+      method.invoke(entity);
     }
-
-    stmt.setObject(index, idValue);
-
-    stmt.executeUpdate();
   }
 
   public <T> void delete(final T entity) throws Exception {
@@ -215,18 +236,18 @@ public class EntityManager {
     final String sql = "DELETE FROM " + metadata.getTableName() +
         " WHERE " + metadata.getIdField().getColumnName() + "=?";
 
-    final PreparedStatement stmt = connection.prepareStatement(sql);
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      Object idValue = metadata.getIdField().getField().get(entity);
 
-    Object idValue = metadata.getIdField().getField().get(entity);
+      // Convert UUID to String for storage
+      if (idValue instanceof java.util.UUID) {
+        idValue = idValue.toString();
+      }
 
-    // Convert UUID to String for storage
-    if (idValue instanceof java.util.UUID) {
-      idValue = idValue.toString();
+      stmt.setObject(1, idValue);
+
+      stmt.executeUpdate();
     }
-
-    stmt.setObject(1, idValue);
-
-    stmt.executeUpdate();
   }
 
   public <T> void deleteById(final Class<T> clazz, final Object id) throws Exception {
@@ -236,13 +257,13 @@ public class EntityManager {
     final String sql = "DELETE FROM " + metadata.getTableName() +
         " WHERE " + metadata.getIdField().getColumnName() + "=?";
 
-    final PreparedStatement stmt = connection.prepareStatement(sql);
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      // Convert UUID to String for database query
+      final Object queryId = (id instanceof java.util.UUID) ? id.toString() : id;
+      stmt.setObject(1, queryId);
 
-    // Convert UUID to String for database query
-    final Object queryId = (id instanceof java.util.UUID) ? id.toString() : id;
-    stmt.setObject(1, queryId);
-
-    stmt.executeUpdate();
+      stmt.executeUpdate();
+    }
   }
 
   public <T> List<T> findAll(final Class<T> clazz) throws Exception {
@@ -251,79 +272,252 @@ public class EntityManager {
 
     final String sql = "SELECT * FROM " + metadata.getTableName();
 
-    final PreparedStatement stmt = connection.prepareStatement(sql);
-    final ResultSet rs = stmt.executeQuery();
+    try (final PreparedStatement stmt = connection.prepareStatement(sql);
+        final ResultSet rs = stmt.executeQuery()) {
 
-    final List<T> results = new ArrayList<>();
+      final List<T> results = new ArrayList<>();
 
-    while (rs.next()) {
-      final T instance = mapResultToEntity(clazz, metadata, rs);
-      results.add(instance);
+      while (rs.next()) {
+        final T instance = ResultSetMapper.mapResultToEntity(clazz, metadata, rs, connection);
+        results.add(instance);
+      }
+
+      return results;
+    }
+  }
+
+  public <T> org.zouarioss.skinnedratorm.util.Page<T> findAll(
+      final Class<T> clazz,
+      final org.zouarioss.skinnedratorm.util.PageRequest pageRequest) throws Exception {
+
+    final EntityMetadata metadata = MetadataRegistry.getMetadata(clazz);
+
+    // Count total
+    final long total;
+    try (
+        final PreparedStatement countStmt = connection
+            .prepareStatement("SELECT COUNT(*) FROM " + metadata.getTableName());
+        final ResultSet countRs = countStmt.executeQuery()) {
+      countRs.next();
+      total = countRs.getLong(1);
     }
 
-    return results;
+    // Get page
+    final String sql = "SELECT * FROM " + metadata.getTableName() +
+        " LIMIT ? OFFSET ?";
+
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      stmt.setInt(1, pageRequest.getSize());
+      stmt.setInt(2, pageRequest.getOffset());
+
+      try (final ResultSet rs = stmt.executeQuery()) {
+        final List<T> results = new ArrayList<>();
+
+        while (rs.next()) {
+          final T instance = ResultSetMapper.mapResultToEntity(clazz, metadata, rs, connection);
+          results.add(instance);
+        }
+
+        return new org.zouarioss.skinnedratorm.util.Page<>(
+            results, pageRequest.getPage(), pageRequest.getSize(), total);
+      }
+    }
   }
 
   public <T> QueryBuilder<T> createQuery(final Class<T> clazz) {
     return new QueryBuilder<>(clazz, connection);
   }
 
+  public <T> void persistBatch(final List<T> entities) throws Exception {
+    if (entities == null || entities.isEmpty()) {
+      return;
+    }
+
+    final Class<?> entityClass = entities.get(0).getClass();
+    final EntityMetadata metadata = MetadataRegistry.getMetadata(entityClass);
+
+    // Invoke lifecycle callbacks and handle timestamps for all entities
+    for (final T entity : entities) {
+      for (final Method method : metadata.getPrePersistMethods()) {
+        method.invoke(entity);
+      }
+      handleTimestamps(entity, metadata, false);
+    }
+
+    // Build SQL
+    final StringBuilder columns = new StringBuilder();
+    final StringBuilder values = new StringBuilder();
+
+    for (final FieldMetadata fieldMeta : metadata.getFields()) {
+      columns.append(fieldMeta.getColumnName()).append(",");
+      values.append("?,");
+    }
+
+    for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
+      if (relationshipMeta.isOwningSide() && relationshipMeta.getJoinColumnName() != null) {
+        columns.append(relationshipMeta.getJoinColumnName()).append(",");
+        values.append("?,");
+      }
+    }
+
+    columns.setLength(columns.length() - 1);
+    values.setLength(values.length() - 1);
+
+    final String sql = "INSERT INTO " + metadata.getTableName() +
+        " (" + columns + ") VALUES (" + values + ")";
+
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      for (final T entity : entities) {
+        int index = 1;
+
+        for (final FieldMetadata fieldMeta : metadata.getFields()) {
+          Object value = fieldMeta.getField().get(entity);
+
+          if (fieldMeta.isGeneratedValue() && value == null) {
+            if (fieldMeta.getGenerationType() == GenerationType.UUID) {
+              if (fieldMeta.getField().getType() == java.util.UUID.class) {
+                value = java.util.UUID.randomUUID();
+              } else {
+                value = java.util.UUID.randomUUID().toString();
+              }
+              fieldMeta.getField().set(entity, value);
+            }
+          }
+
+          value = convertIfEnum(fieldMeta, value);
+          if (value instanceof java.util.UUID) {
+            value = value.toString();
+          }
+
+          stmt.setObject(index++, value);
+        }
+
+        for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
+          if (relationshipMeta.isOwningSide() && relationshipMeta.getJoinColumnName() != null) {
+            final Object relatedEntity = relationshipMeta.getField().get(entity);
+
+            if (relatedEntity != null) {
+              final EntityMetadata relatedMetadata = MetadataRegistry.getMetadata(relatedEntity.getClass());
+              Object relatedId = relatedMetadata.getIdField().getField().get(relatedEntity);
+
+              if (relatedId instanceof java.util.UUID) {
+                relatedId = relatedId.toString();
+              }
+
+              stmt.setObject(index++, relatedId);
+            } else {
+              stmt.setObject(index++, null);
+            }
+          }
+        }
+
+        stmt.addBatch();
+      }
+
+      stmt.executeBatch();
+    }
+  }
+
+  public <T> void updateBatch(final List<T> entities) throws Exception {
+    if (entities == null || entities.isEmpty()) {
+      return;
+    }
+
+    final Class<?> entityClass = entities.get(0).getClass();
+    final EntityMetadata metadata = MetadataRegistry.getMetadata(entityClass);
+
+    // Handle timestamps for all entities
+    for (final T entity : entities) {
+      handleTimestamps(entity, metadata, true);
+    }
+
+    final StringBuilder setClause = new StringBuilder();
+
+    for (final FieldMetadata fieldMeta : metadata.getFields()) {
+      if (!fieldMeta.isId() && fieldMeta.isUpdatable()) {
+        setClause.append(fieldMeta.getColumnName()).append("=?,");
+      }
+    }
+
+    setClause.setLength(setClause.length() - 1);
+
+    final String sql = "UPDATE " + metadata.getTableName() +
+        " SET " + setClause +
+        " WHERE " + metadata.getIdField().getColumnName() + "=?";
+
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      for (final T entity : entities) {
+        int index = 1;
+
+        for (final FieldMetadata fieldMeta : metadata.getFields()) {
+          if (!fieldMeta.isId() && fieldMeta.isUpdatable()) {
+            Object value = fieldMeta.getField().get(entity);
+            value = convertIfEnum(fieldMeta, value);
+
+            if (value instanceof java.util.UUID) {
+              value = value.toString();
+            }
+
+            stmt.setObject(index++, value);
+          }
+        }
+
+        Object idValue = metadata.getIdField().getField().get(entity);
+        if (idValue instanceof java.util.UUID) {
+          idValue = idValue.toString();
+        }
+
+        stmt.setObject(index, idValue);
+        stmt.addBatch();
+      }
+
+      stmt.executeBatch();
+    }
+  }
+
+  public <T> void deleteBatch(final List<T> entities) throws Exception {
+    if (entities == null || entities.isEmpty()) {
+      return;
+    }
+
+    final Class<?> entityClass = entities.get(0).getClass();
+    final EntityMetadata metadata = MetadataRegistry.getMetadata(entityClass);
+
+    final String sql = "DELETE FROM " + metadata.getTableName() +
+        " WHERE " + metadata.getIdField().getColumnName() + "=?";
+
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      for (final T entity : entities) {
+        Object idValue = metadata.getIdField().getField().get(entity);
+
+        if (idValue instanceof java.util.UUID) {
+          idValue = idValue.toString();
+        }
+
+        stmt.setObject(1, idValue);
+        stmt.addBatch();
+      }
+
+      stmt.executeBatch();
+    }
+  }
+
   public Connection getConnection() {
     return connection;
   }
 
-  private <T> T mapResultToEntity(final Class<T> clazz, final EntityMetadata metadata, final ResultSet rs)
-      throws Exception {
+  public void beginTransaction() throws Exception {
+    connection.setAutoCommit(false);
+  }
 
-    final T instance = clazz.getDeclaredConstructor().newInstance();
+  public void commit() throws Exception {
+    connection.commit();
+    connection.setAutoCommit(true);
+  }
 
-    for (final FieldMetadata fieldMeta : metadata.getFields()) {
-
-      Object value = rs.getObject(fieldMeta.getColumnName());
-
-      if (value != null) {
-        // Handle UUID conversion
-        if (fieldMeta.getField().getType() == java.util.UUID.class && value instanceof String) {
-          value = java.util.UUID.fromString((String) value);
-        }
-        // Handle Timestamp to Instant conversion
-        else if (fieldMeta.getField().getType() == java.time.Instant.class && value instanceof java.sql.Timestamp) {
-          value = ((java.sql.Timestamp) value).toInstant();
-        }
-        // Handle enum conversion
-        else if (fieldMeta.getEnumType() != null) {
-          value = convertToEnum(fieldMeta, value);
-        }
-      }
-
-      fieldMeta.getField().set(instance, value);
-    }
-
-    // Load OneToOne relationships (only owning side has join column)
-    for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
-      
-      if (relationshipMeta.isOwningSide() && relationshipMeta.getJoinColumnName() != null) {
-        // Get the foreign key value from the result set
-        Object foreignKeyValue = rs.getObject(relationshipMeta.getJoinColumnName());
-        
-        if (foreignKeyValue != null) {
-          // Convert to UUID if needed
-          if (foreignKeyValue instanceof String) {
-            foreignKeyValue = java.util.UUID.fromString((String) foreignKeyValue);
-          }
-          
-          // Load the related entity
-          final Class<?> relatedClass = relationshipMeta.getField().getType();
-          final Object relatedEntity = findById(relatedClass, foreignKeyValue);
-          
-          // Set the related entity
-          relationshipMeta.getField().set(instance, relatedEntity);
-        } else {
-        }
-      }
-    }
-
-    return instance;
+  public void rollback() throws Exception {
+    connection.rollback();
+    connection.setAutoCommit(true);
   }
 
   private Object convertIfEnum(final FieldMetadata fieldMeta, final Object value) {
@@ -337,22 +531,6 @@ public class EntityManager {
     }
 
     return value;
-  }
-
-  @SuppressWarnings("unchecked")
-  private Object convertToEnum(final FieldMetadata fieldMeta, final Object value) {
-    final Class<?> enumType = fieldMeta.getField().getType();
-
-    if (!enumType.isEnum()) {
-      return value;
-    }
-
-    if (fieldMeta.getEnumType() == EnumType.STRING) {
-      return Enum.valueOf((Class<? extends Enum>) enumType, value.toString());
-    } else {
-      final Object[] constants = enumType.getEnumConstants();
-      return constants[(Integer) value];
-    }
   }
 
   private void handleTimestamps(final Object entity, final EntityMetadata metadata, final boolean isUpdate)

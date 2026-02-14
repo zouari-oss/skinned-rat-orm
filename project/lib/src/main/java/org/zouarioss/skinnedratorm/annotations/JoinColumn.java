@@ -1,5 +1,7 @@
 package org.zouarioss.skinnedratorm.annotations;
 
+import org.zouarioss.skinnedratorm.flag.OnDeleteType;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -13,4 +15,8 @@ public @interface JoinColumn {
   boolean nullable() default true;
 
   boolean unique() default false;
+  
+  OnDeleteType onDelete() default OnDeleteType.CASCADE;
+  
+  OnDeleteType onUpdate() default OnDeleteType.CASCADE;
 }

@@ -1,5 +1,7 @@
 package org.zouarioss.skinnedratorm.annotations;
 
+import org.zouarioss.skinnedratorm.flag.EnumType;
+
 import java.lang.annotation.*;
 
 @Retention(RetentionPolicy.RUNTIME)

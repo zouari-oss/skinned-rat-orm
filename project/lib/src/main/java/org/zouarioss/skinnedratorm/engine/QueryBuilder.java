@@ -10,6 +10,7 @@ import java.util.List;
 import org.zouarioss.skinnedratorm.metadata.EntityMetadata;
 import org.zouarioss.skinnedratorm.metadata.FieldMetadata;
 import org.zouarioss.skinnedratorm.metadata.MetadataRegistry;
+import org.zouarioss.skinnedratorm.util.ResultSetMapper;
 
 public class QueryBuilder<T> {
 
@@ -30,12 +31,14 @@ public class QueryBuilder<T> {
   }
 
   public QueryBuilder<T> where(final String column, final Object value) {
+    validateColumn(column);
     whereClauses.add(column + " = ?");
     parameters.add(value);
     return this;
   }
 
   public QueryBuilder<T> where(final String column, final String operator, final Object value) {
+    validateColumn(column);
     whereClauses.add(column + " " + operator + " ?");
     parameters.add(value);
     return this;
@@ -45,6 +48,7 @@ public class QueryBuilder<T> {
     if (values == null || values.isEmpty()) {
       return this;
     }
+    validateColumn(column);
     final String placeholders = String.join(",", Collections.nCopies(values.size(), "?"));
     whereClauses.add(column + " IN (" + placeholders + ")");
     parameters.addAll(values);
@@ -52,11 +56,13 @@ public class QueryBuilder<T> {
   }
 
   public QueryBuilder<T> orderBy(final String column) {
+    validateColumn(column);
     this.orderBy = column + " ASC";
     return this;
   }
 
   public QueryBuilder<T> orderBy(final String column, final String direction) {
+    validateColumn(column);
     this.orderBy = column + " " + direction;
     return this;
   }
@@ -73,22 +79,24 @@ public class QueryBuilder<T> {
 
   public List<T> getResultList() throws Exception {
     final String sql = buildSelectQuery();
-    final PreparedStatement stmt = connection.prepareStatement(sql);
 
-    int index = 1;
-    for (final Object param : parameters) {
-      stmt.setObject(index++, param);
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      int index = 1;
+      for (final Object param : parameters) {
+        stmt.setObject(index++, param);
+      }
+
+      try (final ResultSet rs = stmt.executeQuery()) {
+        final List<T> results = new ArrayList<>();
+
+        while (rs.next()) {
+          final T instance = ResultSetMapper.mapResultToEntity(entityClass, metadata, rs, connection);
+          results.add(instance);
+        }
+
+        return results;
+      }
     }
-
-    final ResultSet rs = stmt.executeQuery();
-    final List<T> results = new ArrayList<>();
-
-    while (rs.next()) {
-      final T instance = mapResultToEntity(rs);
-      results.add(instance);
-    }
-
-    return results;
   }
 
   public T getSingleResult() throws Exception {
@@ -101,18 +109,20 @@ public class QueryBuilder<T> {
 
   public long count() throws Exception {
     final String sql = buildCountQuery();
-    final PreparedStatement stmt = connection.prepareStatement(sql);
 
-    int index = 1;
-    for (final Object param : parameters) {
-      stmt.setObject(index++, param);
-    }
+    try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+      int index = 1;
+      for (final Object param : parameters) {
+        stmt.setObject(index++, param);
+      }
 
-    final ResultSet rs = stmt.executeQuery();
-    if (rs.next()) {
-      return rs.getLong(1);
+      try (final ResultSet rs = stmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getLong(1);
+        }
+        return 0;
+      }
     }
-    return 0;
   }
 
   private String buildSelectQuery() {
@@ -149,70 +159,13 @@ public class QueryBuilder<T> {
     return sql.toString();
   }
 
-  private T mapResultToEntity(final ResultSet rs) throws Exception {
-    final T instance = entityClass.getDeclaredConstructor().newInstance();
+  private void validateColumn(final String column) {
+    final boolean valid = metadata.getFields().stream()
+        .anyMatch(f -> f.getColumnName().equals(column));
 
-    for (final FieldMetadata fieldMeta : metadata.getFields()) {
-      Object value = rs.getObject(fieldMeta.getColumnName());
-
-      if (value != null) {
-        // Handle UUID conversion
-        if (fieldMeta.getField().getType() == java.util.UUID.class && value instanceof String) {
-          value = java.util.UUID.fromString((String) value);
-        }
-        // Handle Timestamp to Instant conversion
-        else if (fieldMeta.getField().getType() == java.time.Instant.class && value instanceof java.sql.Timestamp) {
-          value = ((java.sql.Timestamp) value).toInstant();
-        }
-        // Handle enum conversion
-        else if (fieldMeta.getEnumType() != null) {
-          value = convertToEnum(fieldMeta, value);
-        }
-      }
-
-      fieldMeta.getField().set(instance, value);
-    }
-
-    // Load OneToOne relationships (only owning side has join column)
-    for (final FieldMetadata relationshipMeta : metadata.getRelationshipFields()) {
-      if (relationshipMeta.isOwningSide() && relationshipMeta.getJoinColumnName() != null) {
-        // Get the foreign key value from the result set
-        Object foreignKeyValue = rs.getObject(relationshipMeta.getJoinColumnName());
-        
-        if (foreignKeyValue != null) {
-          // Convert to UUID if needed
-          if (foreignKeyValue instanceof String) {
-            foreignKeyValue = java.util.UUID.fromString((String) foreignKeyValue);
-          }
-          
-          // Load the related entity using EntityManager
-          final Class<?> relatedClass = relationshipMeta.getField().getType();
-          final org.zouarioss.skinnedratorm.core.EntityManager em = 
-              new org.zouarioss.skinnedratorm.core.EntityManager(connection);
-          final Object relatedEntity = em.findById(relatedClass, foreignKeyValue);
-          
-          // Set the related entity
-          relationshipMeta.getField().set(instance, relatedEntity);
-        }
-      }
-    }
-
-    return instance;
-  }
-
-  @SuppressWarnings("unchecked")
-  private Object convertToEnum(final FieldMetadata fieldMeta, final Object value) {
-    final Class<?> enumType = fieldMeta.getField().getType();
-
-    if (!enumType.isEnum()) {
-      return value;
-    }
-
-    if (fieldMeta.getEnumType() == org.zouarioss.skinnedratorm.annotations.EnumType.STRING) {
-      return Enum.valueOf((Class<? extends Enum>) enumType, value.toString());
-    } else {
-      final Object[] constants = enumType.getEnumConstants();
-      return constants[(Integer) value];
+    if (!valid) {
+      throw new org.zouarioss.skinnedratorm.exception.QueryException(
+          "Unknown column '" + column + "' for entity " + entityClass.getSimpleName());
     }
   }
 }

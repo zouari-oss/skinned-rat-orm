@@ -1,5 +1,7 @@
 package org.zouarioss.skinnedratorm.annotations;
 
+import org.zouarioss.skinnedratorm.flag.IndexType;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
@@ -13,4 +15,6 @@ public @interface Index {
   String name();
 
   String[] columnList();
+
+  IndexType type() default IndexType.BTREE;
 }

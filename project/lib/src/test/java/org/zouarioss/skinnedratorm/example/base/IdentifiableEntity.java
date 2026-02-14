@@ -5,6 +5,7 @@ package org.zouarioss.skinnedratorm.example.base;
 import java.util.UUID;
 
 import org.zouarioss.skinnedratorm.annotations.*;
+import org.zouarioss.skinnedratorm.flag.GenerationType;
 
 @MappedSuperclass
 public abstract class IdentifiableEntity {

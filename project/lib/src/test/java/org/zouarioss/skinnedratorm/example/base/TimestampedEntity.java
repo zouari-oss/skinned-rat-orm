@@ -4,9 +4,13 @@ package org.zouarioss.skinnedratorm.example.base;
 import java.time.Instant;
 
 import org.zouarioss.skinnedratorm.annotations.Column;
+import org.zouarioss.skinnedratorm.flag.*;
 import org.zouarioss.skinnedratorm.annotations.CreationTimestamp;
+import org.zouarioss.skinnedratorm.flag.*;
 import org.zouarioss.skinnedratorm.annotations.MappedSuperclass;
+import org.zouarioss.skinnedratorm.flag.*;
 import org.zouarioss.skinnedratorm.annotations.UpdateTimestamp;
+import org.zouarioss.skinnedratorm.flag.*;
 
 @MappedSuperclass
 public abstract class TimestampedEntity extends IdentifiableEntity {

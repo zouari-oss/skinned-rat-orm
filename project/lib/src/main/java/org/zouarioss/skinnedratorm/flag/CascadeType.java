@@ -1,4 +1,4 @@
-package org.zouarioss.skinnedratorm.annotations;
+package org.zouarioss.skinnedratorm.flag;
 
 public enum CascadeType {
   ALL,

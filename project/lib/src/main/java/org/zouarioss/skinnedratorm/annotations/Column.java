@@ -1,6 +1,7 @@
-
+// `Column` Package name
 package org.zouarioss.skinnedratorm.annotations;
 
+// `java` import(s)
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -18,4 +19,8 @@ public @interface Column {
   boolean unique() default false;
 
   int length() default 255;
-}
+
+  String columnDefinition() default "";
+
+  String defaultValue() default "";
+} // Column @interface

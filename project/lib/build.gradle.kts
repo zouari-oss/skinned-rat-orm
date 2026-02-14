@@ -13,7 +13,7 @@ plugins {
 }
 
 group = "org.zouarioss"
-version = "1.0.1"
+version = "1.0.2"
 
 repositories {
     // Use Maven Central for resolving dependencies.
@@ -69,7 +69,7 @@ publishing {
 
             groupId = "org.zouarioss"
             artifactId = "skinnedratorm"
-            version = "1.0.1"
+            version = "1.0.2"
  
            pom {
                 name.set("Skinned Rat ORM")

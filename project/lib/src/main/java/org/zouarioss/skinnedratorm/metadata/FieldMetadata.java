@@ -4,18 +4,18 @@ import java.lang.reflect.Field;
 
 import org.zouarioss.skinnedratorm.annotations.Column;
 import org.zouarioss.skinnedratorm.annotations.CreationTimestamp;
-import org.zouarioss.skinnedratorm.annotations.EnumType;
 import org.zouarioss.skinnedratorm.annotations.Enumerated;
 import org.zouarioss.skinnedratorm.annotations.GeneratedValue;
-import org.zouarioss.skinnedratorm.annotations.GenerationType;
 import org.zouarioss.skinnedratorm.annotations.Id;
 import org.zouarioss.skinnedratorm.annotations.JoinColumn;
 import org.zouarioss.skinnedratorm.annotations.ManyToOne;
 import org.zouarioss.skinnedratorm.annotations.OneToOne;
 import org.zouarioss.skinnedratorm.annotations.UpdateTimestamp;
+import org.zouarioss.skinnedratorm.flag.EnumType;
+import org.zouarioss.skinnedratorm.flag.GenerationType;
+import org.zouarioss.skinnedratorm.flag.OnDeleteType;
 
 public class FieldMetadata {
-
   private final Field field;
   private final String columnName;
   private final boolean id;
@@ -32,6 +32,10 @@ public class FieldMetadata {
   private final boolean isManyToOne;
   private final String joinColumnName;
   private final String mappedBy; // For inverse side of relationship
+  private final String columnDefinition;
+  private final String defaultValue;
+  private final OnDeleteType onDelete;
+  private final OnDeleteType onUpdate;
 
   public FieldMetadata(final Field field) {
     this.field = field;
@@ -42,18 +46,20 @@ public class FieldMetadata {
     // Check if this is a OneToOne or ManyToOne relationship
     this.isOneToOne = field.isAnnotationPresent(OneToOne.class);
     this.isManyToOne = field.isAnnotationPresent(ManyToOne.class);
-    
+
     // Get mappedBy attribute if it's an inverse side
     final OneToOne oneToOne = field.getAnnotation(OneToOne.class);
     this.mappedBy = (oneToOne != null && !oneToOne.mappedBy().isBlank())
         ? oneToOne.mappedBy()
         : null;
-    
+
     // Get join column name if specified
     final JoinColumn joinColumn = field.getAnnotation(JoinColumn.class);
     this.joinColumnName = (joinColumn != null && !joinColumn.name().isBlank())
         ? joinColumn.name()
         : null;
+    this.onDelete = (joinColumn != null) ? joinColumn.onDelete() : OnDeleteType.CASCADE;
+    this.onUpdate = (joinColumn != null) ? joinColumn.onUpdate() : OnDeleteType.CASCADE;
 
     final Column column = field.getAnnotation(Column.class);
     this.columnName = (column != null && !column.name().isBlank())
@@ -61,9 +67,14 @@ public class FieldMetadata {
         : field.getName();
 
     this.updatable = (column != null) ? column.updatable() : true;
-    this.unique = (column != null) && column.unique();
+    // Check unique from both @Column and @JoinColumn
+    this.unique = ((column != null) && column.unique()) || ((joinColumn != null) && joinColumn.unique());
     this.length = (column != null) ? column.length() : 255;
-    this.nullable = (column != null) ? column.nullable() : true;
+    // Check nullable from both @Column and @JoinColumn (JoinColumn takes precedence
+    // for relationships)
+    this.nullable = (joinColumn != null) ? joinColumn.nullable() : ((column != null) ? column.nullable() : true);
+    this.columnDefinition = (column != null && !column.columnDefinition().isBlank()) ? column.columnDefinition() : "";
+    this.defaultValue = (column != null && !column.defaultValue().isBlank()) ? column.defaultValue() : "";
 
     final Enumerated enumerated = field.getAnnotation(Enumerated.class);
     this.enumType = (enumerated != null)
@@ -144,5 +155,21 @@ public class FieldMetadata {
 
   public boolean isOwningSide() {
     return (isOneToOne || isManyToOne) && mappedBy == null;
+  }
+
+  public String getColumnDefinition() {
+    return columnDefinition;
+  }
+
+  public String getDefaultValue() {
+    return defaultValue;
+  }
+
+  public OnDeleteType getOnDelete() {
+    return onDelete;
+  }
+
+  public OnDeleteType getOnUpdate() {
+    return onUpdate;
   }
 }

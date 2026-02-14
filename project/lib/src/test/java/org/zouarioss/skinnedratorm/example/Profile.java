@@ -40,7 +40,7 @@ package org.zouarioss.skinnedratorm.example;
 
 import org.zouarioss.skinnedratorm.annotations.Column;
 import org.zouarioss.skinnedratorm.annotations.Entity;
-import org.zouarioss.skinnedratorm.annotations.EnumType;
+import org.zouarioss.skinnedratorm.flag.EnumType;
 import org.zouarioss.skinnedratorm.annotations.Enumerated;
 import org.zouarioss.skinnedratorm.annotations.JoinColumn;
 import org.zouarioss.skinnedratorm.annotations.OneToOne;
@@ -52,7 +52,7 @@ import org.zouarioss.skinnedratorm.example.util.UsernameGenerator;
 
 @Entity
 @Table(name = "profiles")
-@UniqueConstraint(name = "uk_profile_username", columnNames = {"username"})
+@UniqueConstraint(name = "uk_profile_username", columnNames = { "username" })
 public final class Profile extends TimestampedEntity {
   @Column(nullable = false, length = 50, updatable = false)
   private String username; // Pre-persist

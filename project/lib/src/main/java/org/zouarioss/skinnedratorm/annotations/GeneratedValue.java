@@ -1,5 +1,7 @@
 package org.zouarioss.skinnedratorm.annotations;
 
+import org.zouarioss.skinnedratorm.flag.GenerationType;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;

@@ -21,6 +21,7 @@
 package org.zouarioss.skinnedratorm.example;
 
 import org.zouarioss.skinnedratorm.annotations.*;
+import org.zouarioss.skinnedratorm.flag.*;
 import org.zouarioss.skinnedratorm.example.base.TimestampedEntity;
 
 @Entity

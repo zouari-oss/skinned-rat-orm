@@ -43,6 +43,7 @@ import java.time.Duration;
 import java.time.Instant;
 
 import org.zouarioss.skinnedratorm.annotations.*;
+import org.zouarioss.skinnedratorm.flag.*;
 import org.zouarioss.skinnedratorm.example.base.IdentifiableEntity;
 
 @Entity

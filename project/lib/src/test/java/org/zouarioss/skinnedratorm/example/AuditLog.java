@@ -42,7 +42,7 @@ import java.time.Instant;
 import org.zouarioss.skinnedratorm.annotations.Column;
 import org.zouarioss.skinnedratorm.annotations.CreationTimestamp;
 import org.zouarioss.skinnedratorm.annotations.Entity;
-import org.zouarioss.skinnedratorm.annotations.FetchType;
+import org.zouarioss.skinnedratorm.flag.FetchType;
 import org.zouarioss.skinnedratorm.annotations.Index;
 import org.zouarioss.skinnedratorm.annotations.JoinColumn;
 import org.zouarioss.skinnedratorm.annotations.ManyToOne;
@@ -53,8 +53,8 @@ import org.zouarioss.skinnedratorm.example.util.SystemInfo;
 
 @Entity
 @Table(name = "audit_logs")
-@Index(name = "idx_audit_user", columnList = {"auth_session_id"})
-@Index(name = "idx_audit_created", columnList = {"created_at"})
+@Index(name = "idx_audit_user", columnList = { "auth_session_id" })
+@Index(name = "idx_audit_created", columnList = { "created_at" })
 public final class AuditLog extends IdentifiableEntity {
   @Column(nullable = false, length = 100)
   private String action;
