@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.zouarioss.skinnedratorm.core.EntityManager;
 import org.zouarioss.skinnedratorm.engine.QueryBuilder;
-import org.zouarioss.skinnedratorm.engine.SQLDialect;
+import org.zouarioss.skinnedratorm.flag.SQLDialect;
 import org.zouarioss.skinnedratorm.engine.SchemaGenerator;
 import org.zouarioss.skinnedratorm.example.AccountStatus;
 import org.zouarioss.skinnedratorm.example.PresenceStatus;

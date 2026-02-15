@@ -37,6 +37,16 @@ java {
     }
     withJavadocJar()
     withSourcesJar()
+    tasks.withType<Javadoc>().configureEach {
+    (options as? StandardJavadocDocletOptions)?.apply {
+        addBooleanOption("author", true)
+        addBooleanOption("version", true)
+
+        encoding = "UTF-8"
+        windowTitle = "Skinned Rat ORM 1.0.2 API"
+        docTitle = "Skinned Rat ORM API Documentation"
+    }
+  }
 }
 
 tasks.named<Test>("test") {
@@ -104,7 +114,7 @@ publishing {
         // Local Maven repository (for testing)
         maven {
             name = "local"
-            url = uri("file://${buildDir}/repo")
+            url = layout.buildDirectory.dir("repo").map { it.asFile.toURI() }.get()
         }
 
         // GitHub Packages
