@@ -161,7 +161,9 @@ public class QueryBuilder<T> {
 
   private void validateColumn(final String column) {
     final boolean valid = metadata.getFields().stream()
-        .anyMatch(f -> f.getColumnName().equals(column));
+        .anyMatch(f -> f.getColumnName().equals(column))
+        || metadata.getRelationshipFields().stream()
+            .anyMatch(f -> column.equals(f.getJoinColumnName()));
 
     if (!valid) {
       throw new org.zouarioss.skinnedratorm.exception.QueryException(
